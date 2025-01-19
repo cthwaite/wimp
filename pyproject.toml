@@ -1,3 +1,33 @@
+[project]
+name = "wimp"
+dynamic = ["version"]
+description = "A little Python imports tool"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "kthwaite", email = "" }
+]
+[project.urls]
+Homepage = "https://github.com/cthwaite/wimp"
+Source = "https://github.com/cthwaite/wimp"
+
+[project.scripts]
+wimp = "wimp.__main__:main"
+
+[tool.hatch.version]
+path = "wimp/__init__.py"
+
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
