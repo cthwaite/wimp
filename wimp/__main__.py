@@ -1,21 +1,20 @@
-"""Summarise Python imports in a given context.
-"""
+"""Summarise Python imports in a given context."""
 
 import argparse
 import ast
-import distutils.sysconfig
 import json
 import os
 import pkgutil
 import sys
-from typing import Any, Dict, Generator, List, Optional, Set
+import sysconfig
+from typing import Any, Generator
 
 _TRANSLATE = {
     "pkg_resources": "setuptools",
 }
 
 
-def iter_code_cells(cells: List[Dict[str, Any]]) -> Generator[str, None, None]:
+def iter_code_cells(cells: list[dict[str, Any]]) -> Generator[str, None, None]:
     """Iterate over cells in a Jupyter notebook, yielding source code from code cells."""
     for cell in cells:
         if cell["cell_type"] == "code":
@@ -23,7 +22,7 @@ def iter_code_cells(cells: List[Dict[str, Any]]) -> Generator[str, None, None]:
 
 
 class ImportCollector(ast.NodeVisitor):
-    def __init__(self, ignore: Optional[List[str]] = None):
+    def __init__(self, ignore: list[str] | None = None):
         super().__init__()
         self.imports = set()
         self.ignore = set(ignore) if ignore else set()
@@ -55,14 +54,11 @@ def gather_modules(path: str):
                 yield submod
 
 
-def get_stdlib() -> Set[str]:
+def get_stdlib() -> set[str]:
     """Get a list of module names that (probably) comprises the Python standard
     library.
     """
-    std = distutils.sysconfig.get_python_lib(standard_lib=True)
-    stdlib = set(mod.name for mod in pkgutil.iter_modules([std]))
-    stdlib.update(sys.builtin_module_names)
-    return stdlib
+    return set(sys.builtin_module_names) | sys.stdlib_module_names
 
 
 def handle_package(path: str):
