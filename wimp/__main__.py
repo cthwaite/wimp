@@ -1,115 +1,40 @@
 """Summarise Python imports in a given context."""
 
 import argparse
-import ast
-import json
-import os
-import pkgutil
-import sys
-import sysconfig
-from typing import Any, Generator
+import logging
 
-_TRANSLATE = {
-    "pkg_resources": "setuptools",
-}
-
-
-def iter_code_cells(cells: list[dict[str, Any]]) -> Generator[str, None, None]:
-    """Iterate over cells in a Jupyter notebook, yielding source code from code cells."""
-    for cell in cells:
-        if cell["cell_type"] == "code":
-            yield "".join(cell["source"])
-
-
-class ImportCollector(ast.NodeVisitor):
-    def __init__(self, ignore: list[str] | None = None):
-        super().__init__()
-        self.imports = set()
-        self.ignore = set(ignore) if ignore else set()
-
-    def _push_name(self, name: str):
-        if name not in self.ignore:
-            self.imports.add(_TRANSLATE.get(name, name))
-
-    def visit_Import(self, node: ast.Import):
-        for alias in node.names:
-            name, *_ = alias.name.split(".")
-            self._push_name(name)
-
-    def visit_ImportFrom(self, node: ast.ImportFrom):
-        if node.module is not None:
-            name = node.module
-            if "." in name:
-                name, *_ = name.split(".")
-            if node.level == 0:
-                self._push_name(name)
-
-
-def gather_modules(path: str):
-    for mod in pkgutil.walk_packages([path]):
-        yield mod
-        if mod.ispkg:
-            subpath = os.path.join(mod.module_finder.path, mod.name)
-            for submod in gather_modules(subpath):
-                yield submod
-
-
-def get_stdlib() -> set[str]:
-    """Get a list of module names that (probably) comprises the Python standard
-    library.
-    """
-    return set(sys.builtin_module_names) | sys.stdlib_module_names
-
-
-def handle_package(path: str):
-    stdlib = get_stdlib()
-    collector = ImportCollector(ignore=[os.path.basename(path)])
-    for mod in gather_modules(path):
-        path = mod.module_finder.path
-        if mod.ispkg:
-            continue
-        with open(os.path.join(path, f"{mod.name}.py"), "r") as f:
-            mod_str = f.read()
-        nodes = ast.parse(mod_str)
-        collector.visit(nodes)
-
-    final = collector.imports - stdlib
-    for mod in sorted(final):
-        print(mod)
-
-
-def handle_notebook(path: str):
-    """Parse cells from a notebook, extracting imports."""
-    stdlib = get_stdlib()
-    with open(path) as ipy_file:
-        data = json.load(ipy_file)
-    # TODO: check this is a python notebook
-    # meta = data['metadata']
-    collector = ImportCollector()
-    for cell in iter_code_cells(data["cells"]):
-        nodes = ast.parse(cell)
-        collector.visit(nodes)
-
-    final = collector.imports - stdlib
-    for mod in sorted(final):
-        print(mod)
+from .collector import ImportCollector
+from .handler import get_handler
+from .utility import get_stdlib
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Print non-standard-library imports made in a package, module or Jupyter notebook"
+        description=(
+            "Print non-standard-library imports made in a package, module or Jupyter"
+            " notebook"
+        )
     )
     parser.add_argument("path")
+    parser.add_argument(
+        "-v", "--verbose", help="Enable verbose output", action="store_true"
+    )
     args = parser.parse_args()
 
-    path = os.path.abspath(os.path.expanduser(args.path))
-    if os.path.isdir(path):
-        handle_package(path)
-    elif path.endswith(".ipynb"):
-        handle_notebook(path)
-    else:
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO)
+    try:
+        handler = get_handler(args.path)
+    except ValueError:
         print(f"Unrecognised path: {args.path}")
         return
+
+    collector = ImportCollector()
+    handler.collect_into(collector)
+    stdlib = get_stdlib()
+    module_list = sorted(set(collector.imports) - set(stdlib))
+    for item in module_list:
+        print(item)
 
 
 if __name__ == "__main__":
